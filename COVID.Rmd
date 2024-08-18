@@ -25,6 +25,12 @@ deaths_global <- read_csv(urls[4])
 
 ```
 
+### Data Summary
+The data contains information on cases and deaths related to COVID-19 from both the US and Globally. There are many questions that can be answered with this data and we will complete multiple visual analysis to do so, particularly in predicting how well the virus is being responded to throughout the US.
+
+### Data manipulations/clean ups
+Below I am completing some data manipulations and clean ups in order to increase the quality of the data for further analysis
+
 cleaning up the confirmed_global file
 ```{r cleanupconfirmedglobal, echo=TRUE}
 confirmed_global <- confirmed_global %>%
@@ -84,8 +90,6 @@ Join US cases and deaths
 US <- confirmed_US %>% 
       full_join(deaths_US)
 ```
-
-
 US Analysis grouping
 ```{r groupingUSanalysis, echo=TRUE}
 US_by_State <- US %>%
@@ -105,7 +109,8 @@ US_total <- US %>%
   ungroup()
 ```
 
-US Visual
+### US Visual
+Looking at deaths and cases in the US at an aggregate level
 ```{r USanalysisVisual, echo=TRUE}
 US_total %>%
   filter(cases>0) %>%
@@ -119,7 +124,8 @@ US_total %>%
   labs(title = "COVID 19 in US", y=NULL)
 ```
 
-State Visual
+### State Visual
+Looking at deaths and cases in the state of New York at an aggregate level
 ```{r StateAnalysisVisual, echo=TRUE}
 state <- "New York"
 US_by_State %>%
@@ -136,12 +142,10 @@ US_by_State %>%
   
 ```
 
-max US deaths in a day
-```{r MaxDeaths, echo = TRUE}
-max(US_total$deaths)
-```
 
-Looking at whether cases are slowing down
+### Analysis of new cases/deaths
+Completing an analysis to understand if new cases/deaths are slowing down. This helps to see if the situation is getting better or not.
+
 ```{r ApplyLag, echo=TRUE}
 US_by_State <- US_by_State %>%
   mutate(new_cases = cases - lag(cases),
@@ -151,7 +155,7 @@ US_total <- US_total %>%
          new_deaths = deaths - lag(deaths))
 ```
 
-Applying visualization to new cases/deaths
+
 ```{r NewCasesDeathsTotal, echo=TRUE}
 US_total %>%
   filter(cases>0) %>%
@@ -164,8 +168,11 @@ US_total %>%
   theme(legend.position = "bottom", axis.text.x = element_text(angle=90)) +
   labs(title = "New Cases/Deaths COVID 19 in US", y=NULL)
 ```
+### New Cases Summary
+It appears as though new cases have begun to flatten out, however there is clearly a large amount of variation in the later stages of the pandemic. I suspect this may be due to the quality of the data as monitoring becomes less important.
 
-Applying visualization of new cases/deaths to state
+### New York Analysis
+Applying visualization and tabular analysis of new cases/deaths to state to get a general idea of the situation and look for further areas to focus on.
 ```{r NewCasesDeathsState, echo=TRUE}
 state <- "New York"
 US_by_State %>%
@@ -201,7 +208,7 @@ US_state_totals %>%
 ```
 
 ### Linear Model
-
+In this linear analysis I am analysing to see whether there is a linear correlation between deaths and cases. A further analysis on this data would be to segment the data into different time periods. This would help us understand if deaths per case were more correlated in the earlier stages of the pandemic compared to later stages (due to increased knowledge on virus etc.)
 ```{r linear, echo=TRUE}
 mod= lm(deaths_per_thou ~ cases_per_thou, data=US_state_totals)
 summary(mod)
@@ -248,6 +255,9 @@ ggplot() +
 
 This graph has a large amount of noise involved. This is somewhat what I expected, as this shows that there is not really a distinct state that is doing better in treatment of cases with the exception of the bottom couple of states outlined. This could be analyzed further to understand what these states did differently in order to have fewer deaths per case. 
 
+### Additional Model
+I am using a linear trend model in this analysis. What I am looking to understand is whether at a 'high level' the number of deaths within the state of New York is leveling off, or continuing in a positive fashion. 
+
 
 ```{r additionalmodel3, echo=TRUE}
 cases_grouped <- cases_grouped %>%
@@ -270,3 +280,6 @@ Focusing in on New York again and tracking deaths over time, there is a clear up
 
 ### Potential Bias
 There is a posibility for both under/over reporting COVID cases and/or deaths, but it is difficult to know in what direction this bias is in. For example, there was political incentives to under report in order to show a better result from COVID restrictions however there may also be incentives to over-report in order to justify further restrictions or be able to sell certain products
+
+### Overall Conclusion
+Across the multiple analysis completed, it is concerning to see that for the most part cases were continuing to increase over time. Cases did not appear to be increasing exponentially, which is positive, however both cases and deaths were still showing increases across almost all periods of time. It would be incredibly interesting to see this data to current date, however due to expense of collecting, I understand this data is likely unavailable to the public.
