@@ -1,0 +1,272 @@
+---
+title: "COVID"
+output: pdf_document
+date: "2024-07-09"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+Reading in the various covid data files
+
+```{r readdata, echo=TRUE}
+url_in <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/"
+
+file_names <- c("time_series_covid19_confirmed_US.csv",  "time_series_covid19_confirmed_global.csv", "time_series_covid19_deaths_US.csv",  "time_series_covid19_deaths_global.csv")
+
+urls <- str_c(url_in,file_names)
+
+confirmed_US <- read_csv(urls[1])
+confirmed_global <- read_csv(urls[2])
+deaths_US <- read_csv(urls[3])
+deaths_global <- read_csv(urls[4])
+
+```
+
+cleaning up the confirmed_global file
+```{r cleanupconfirmedglobal, echo=TRUE}
+confirmed_global <- confirmed_global %>%
+    pivot_longer(cols = -c('Province/State', 'Country/Region', 'Lat', 'Long'), names_to = "date", values_to = "cases") %>%
+    select(-c('Lat','Long'))
+```
+
+cleaning up the confirmed_US file
+```{r cleanupconfirmedUS, echo=TRUE}
+confirmed_US <- confirmed_US %>%
+    pivot_longer(cols = -c('UID':'Combined_Key'), names_to = "date", values_to = "cases") %>%
+    select(Admin2:cases) %>%
+    mutate(date = mdy(date)) %>%
+    select(-c(Lat,Long_)) 
+```
+
+cleaning up the deaths_US file
+```{r cleanupdeathsUS, echo=TRUE}
+deaths_US <- deaths_US %>%
+    pivot_longer(cols = -(UID:Population), names_to = "date", values_to = "deaths") %>%
+    select(Admin2:deaths)%>%
+    mutate(date=mdy(date)) %>%
+    select(-c(Lat, Long_))
+```
+
+cleaning up deaths_global file
+```{r cleanupdeathsglobal, echo = TRUE}
+deaths_global <- deaths_global %>%
+    pivot_longer(cols = -c('Province/State', 'Country/Region', 'Lat', 'Long'), names_to = "date", values_to = "deaths") %>%
+    select(-c('Lat','Long'))
+```
+
+join global cases and global deaths
+```{r joinglobal, echo = TRUE}
+global <- confirmed_global %>%
+    full_join(deaths_global) %>%
+    rename(Country_Region = 'Country/Region',
+           Province_State = 'Province/State') %>%
+    mutate(date = mdy(date))
+```
+Filter where cases global positive
+```{r filtercases, echo=TRUE}
+global <- global %>% filter(cases > 0)
+```
+
+Create Key in global
+```{r globalkey, echo=TRUE}
+global <- global %>%
+        unite("Combined_Key", c(Province_State, Country_Region),
+              sep=", ",
+              na.rm = TRUE,
+              remove = FALSE)
+```
+
+Join US cases and deaths
+```{r USJoin, echo=TRUE}
+US <- confirmed_US %>% 
+      full_join(deaths_US)
+```
+
+
+US Analysis grouping
+```{r groupingUSanalysis, echo=TRUE}
+US_by_State <- US %>%
+  group_by(Province_State, Country_Region, date) %>%
+  summarize(cases=sum(cases), deaths=sum(deaths), Population=sum(Population)) %>%
+  mutate(deaths_per_milly = deaths * 1000000 / Population) %>%
+  mutate(cases_per_milly = cases * 1000000 / Population) %>%
+  select(Province_State, Country_Region, date, cases, deaths, deaths_per_milly, cases_per_milly, Population) %>%
+  ungroup()
+
+US_total <- US %>%
+  group_by(Country_Region, date) %>%
+  summarize(cases=sum(cases), deaths=sum(deaths), Population=sum(Population)) %>%
+  mutate(deaths_per_milly = deaths * 1000000 / Population) %>%
+  mutate(cases_per_milly = cases * 1000000 / Population) %>%
+  select(Country_Region, date, cases, deaths, deaths_per_milly, Population, cases_per_milly) %>%
+  ungroup()
+```
+
+US Visual
+```{r USanalysisVisual, echo=TRUE}
+US_total %>%
+  filter(cases>0) %>%
+  ggplot(aes(x = date, y = cases)) +
+  geom_line(aes(colour = "cases")) +
+  geom_point(aes(colour= "cases")) +
+  geom_line(aes(y = deaths, colour = "deaths")) +
+  geom_point(aes(y = deaths, colour = "deaths"))  + 
+  scale_y_log10() +
+  theme(legend.position = "bottom", axis.text.x = element_text(angle=90)) +
+  labs(title = "COVID 19 in US", y=NULL)
+```
+
+State Visual
+```{r StateAnalysisVisual, echo=TRUE}
+state <- "New York"
+US_by_State %>%
+  filter(Province_State == state) %>%
+  filter(cases>0) %>%
+  ggplot(aes(x = date, y = cases)) +
+  geom_line(aes(colour = "cases")) +
+  geom_point(aes(colour= "cases")) +
+  geom_line(aes(y = deaths, colour = "deaths")) +
+  geom_point(aes(y = deaths, colour = "deaths"))  + 
+  scale_y_log10() +
+  theme(legend.position = "bottom", axis.text.x = element_text(angle=90)) +
+  labs(title = str_c("COVID 19 in ",state), y=NULL)
+  
+```
+
+max US deaths in a day
+```{r MaxDeaths, echo = TRUE}
+max(US_total$deaths)
+```
+
+Looking at whether cases are slowing down
+```{r ApplyLag, echo=TRUE}
+US_by_State <- US_by_State %>%
+  mutate(new_cases = cases - lag(cases),
+         new_deaths = deaths - lag(deaths))
+US_total <- US_total %>%
+  mutate(new_cases = cases - lag(cases),
+         new_deaths = deaths - lag(deaths))
+```
+
+Applying visualization to new cases/deaths
+```{r NewCasesDeathsTotal, echo=TRUE}
+US_total %>%
+  filter(cases>0) %>%
+  ggplot(aes(x = date, y = new_cases)) +
+  geom_line(aes(colour = "new_cases")) +
+  geom_point(aes(colour= "new_cases")) +
+  geom_line(aes(y = new_deaths, colour = "new deaths")) +
+  geom_point(aes(y = new_deaths, colour = "new deaths"))  + 
+  scale_y_log10() +
+  theme(legend.position = "bottom", axis.text.x = element_text(angle=90)) +
+  labs(title = "New Cases/Deaths COVID 19 in US", y=NULL)
+```
+
+Applying visualization of new cases/deaths to state
+```{r NewCasesDeathsState, echo=TRUE}
+state <- "New York"
+US_by_State %>%
+  filter(Province_State == state) %>%
+  filter(cases>0) %>%
+  ggplot(aes(x = date, y = new_cases)) +
+  geom_line(aes(colour = "new cases")) +
+  geom_point(aes(colour= "new cases")) +
+  geom_line(aes(y = new_deaths, colour = "new deaths")) +
+  geom_point(aes(y = new_deaths, colour = "new deaths"))  + 
+  scale_y_log10() +
+  theme(legend.position = "bottom", axis.text.x = element_text(angle=90)) +
+  labs(title = str_c("COVID 19 in ",state), y=NULL)
+```
+
+```{r StateAnalysis, echo=TRUE}
+US_state_totals <- US_by_State %>%
+  group_by(Province_State) %>%
+  summarize(deaths = max(deaths), cases = max(cases),
+  population = max(Population),
+  cases_per_thou = 1000* cases/population,
+  deaths_per_thou = 1000 * deaths/population) %>%
+  filter(cases>0, population>0)
+```
+
+```{r slicer, echo=TRUE}
+US_state_totals %>%
+  slice_min(deaths_per_thou, n=10) %>%
+  select(deaths_per_thou, cases_per_thou, everything())
+US_state_totals %>%
+  slice_max(deaths_per_thou, n=10) %>%
+  select(deaths_per_thou, cases_per_thou, everything())
+```
+
+### Linear Model
+
+```{r linear, echo=TRUE}
+mod= lm(deaths_per_thou ~ cases_per_thou, data=US_state_totals)
+summary(mod)
+US_tot_w_pred <- US_state_totals %>% mutate(pred=predict(mod))
+US_tot_w_pred %>% ggplot() +
+  geom_point(aes(x=cases_per_thou, y=deaths_per_thou), color = "blue") + geom_point(aes(x=cases_per_thou, y=pred), color ="red")
+```
+
+### Additional Visualization 1
+visualization depicting whether the ratio of deaths per case was increasing or decreasing over time. e.g. Is treatment potentially improving or not.
+
+```{r addtmodel, echo=TRUE}
+US_by_State %>% mutate(difference = new_deaths/new_cases) %>%
+filter(new_deaths >0, new_cases > 0, Province_State=="New York") %>%
+  ggplot() + 
+  geom_point(aes(x=date, y=difference), color="blue")
+```
+
+### Interpretation 1
+Graph shows that early in the pandemic, there was a higher ratio of deaths per case. This makes sense and is likely due to a combination of uncertainty on how to deal with the novel virus as well as hospitals beign overwhelmed. There is then clear seasonality each year showing a worsening in the death to case ratio, this is likely again due to overwhelmed hospitals from other seasonal illness.
+
+### Additional Visual Analysis 2
+I am looking to create a cluster graph broken down by state showing the number of cases/deaths grouped by month. I am doing this analysis as I would like to see if there are distinct groups between states and to understand if states are consistent in their performance. This will help me to understand visually if there were better/worse responses between states. 
+
+
+```{r addtmodel2, echo=TRUE}
+US_by_State_Month <- US_by_State
+US_by_State_Month$Month_Year <- as.Date(format(US_by_State_Month$date, "%Y-%m-01") )
+cases_grouped <- US_by_State_Month %>%
+  group_by(Month_Year, Province_State) %>%
+  summarise(sumcase = sum(cases_per_milly), 
+            sumdeath = sum(deaths_per_milly)) %>%
+  filter(sumcase>0, sumdeath>0, sumcase < Inf)
+
+ggplot() +
+  geom_point(data = cases_grouped,
+             show.legend = FALSE,
+             mapping = aes(x = sumcase, 
+                                  y = sumdeath, 
+                                  colour = Province_State))
+
+```
+### Interpretation Analysis 2
+
+This graph has a large amount of noise involved. This is somewhat what I expected, as this shows that there is not really a distinct state that is doing better in treatment of cases with the exception of the bottom couple of states outlined. This could be analyzed further to understand what these states did differently in order to have fewer deaths per case. 
+
+
+```{r additionalmodel3, echo=TRUE}
+cases_grouped <- cases_grouped %>%
+  filter(Province_State == "New York")
+
+p <- ggplot(cases_grouped, aes(x = Month_Year, y = sumdeath)) +
+  geom_point(color = "red") +
+  geom_line(color = "red") +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(x = "Month and Year", y = "Sum of Deaths") +
+  theme_minimal()
+print(p)
+
+```
+
+### Interpretation Analysis 3
+Focusing in on New York again and tracking deaths over time, there is a clear upward linear trend (excluding obvious outliers). This is based on the sum of deaths, so of course this trend will never decrease, however it is concerning that there is continued upward trajectory of deaths. When performing this analysis I was hopeful to see a reduction in the increase in deaths however this does not appear to have occurred. A further analysis could involve a larger number of states to identify if this trend is consistent across various states focusing in on only new deaths (todays deaths - yesterdays deaths) to help clarify the picture. 
+
+
+
+### Potential Bias
+There is a posibility for both under/over reporting COVID cases and/or deaths, but it is difficult to know in what direction this bias is in. For example, there was political incentives to under report in order to show a better result from COVID restrictions however there may also be incentives to over-report in order to justify further restrictions or be able to sell certain products

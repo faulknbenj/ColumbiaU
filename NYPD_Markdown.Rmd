@@ -1,0 +1,102 @@
+---
+title: "NYPD"
+output:
+  pdf_document: default
+  word_document: default
+date: "2024-07-08"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+```
+
+
+
+### Reading in Data
+
+```{r read, echo=TRUE}
+url_in <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+cases <- read_csv(url_in)
+```
+### Data Description
+Data has an incident per row and describes each of those incidents/crimes in detail including location, perpertrator details, victime, date/time and precinct.
+
+```{r typeupdate, echo=TRUE}
+cases <- cases %>%
+  select(INCIDENT_KEY:VIC_RACE) %>%
+  mutate(OCCUR_DATE = mdy(OCCUR_DATE))
+cases <- as.data.frame(unclass(cases), stringsAsFactors = TRUE)
+cases$PRECINCT <- as.factor(cases$PRECINCT)
+cases$JURISDICTION_CODE <- as.factor(cases$JURISDICTION_CODE)
+```
+  
+  
+```{r summary, echo=TRUE}
+summary(cases)
+```
+### Missing Values 
+There are a number of missing values in the data across the different variables. The way I would deal with this depends on the analysis I am completing. I would either leave the values as unknown, and interpret it as such. Or alternatively, I could impute a value based on statistical analysis e.g. impute the median or mode value into the empty cell. The appropriate imputed measure to use would be dependent on the individual variable. 
+
+```{r visual1perpage, echo=TRUE}
+cases %>%
+  filter(!is.na(PERP_AGE_GROUP) & !(PERP_AGE_GROUP %in% c(1020, 1028,224,940,"UNKNOWN", "(null)"))) %>%
+  mutate(Month_Year = floor_date(OCCUR_DATE, "month")) %>%
+  group_by(Month_Year, PERP_AGE_GROUP) %>%
+  summarise(Count = n()) %>%
+  ggplot(aes(x = Month_Year, y = Count, color = PERP_AGE_GROUP)) +
+  geom_line()
+```
+
+### First Image Analysis
+This graph represents all crime over time broken down by the perpetrators age. I wanted to look at this information as I was curious if an age group would overtake another age group in terms of number of crimes (e.g. are older people starting to commit more crimes), or if they would stay in their respective 'ranks'. One further question this makes me think about is how predictive committing crime at an early age is to comitting crime at a later age.
+
+```{r murderstatistics, echo=TRUE}
+cases %>%
+  filter(STATISTICAL_MURDER_FLAG == TRUE & !(VIC_AGE_GROUP %in% c("1022"))) %>%
+  mutate(Month_Year = floor_date(OCCUR_DATE, "month")) %>%
+  group_by(Month_Year, VIC_AGE_GROUP) %>%
+  summarise(Count = n()) %>%
+  ggplot(aes(x = Month_Year, y = Count, color = VIC_AGE_GROUP)) +
+  geom_line()
+```
+
+### 2nd Image Analysis
+This graph represents the age of murder victims over time. The goal with this is to understand if any particular age group is being murdered more often over time and/or at a greater risk. The question this makes me think about is at what proportion of the population within these age groups are being murdered. e.g. is the highest count group only due to having the highest population. In order to do this I would need to incorporate population statistics from this area.
+
+### Modeling
+
+```{r modeling, echo=TRUE}
+cases$OCCUR_DATE <- as.Date(cases$OCCUR_DATE) 
+cases$Month_Year <- format(cases$OCCUR_DATE, "%Y-%m") 
+
+cases_grouped <- cases %>%
+  group_by(Month_Year) %>%
+  summarise(Count_TRUE = sum(STATISTICAL_MURDER_FLAG == TRUE), 
+            Total_Cases = n())
+
+model <- lm(Count_TRUE ~ Total_Cases, data = cases_grouped)
+summary(model)
+
+ggplot(cases_grouped, aes(x = Total_Cases, y = Count_TRUE)) +
+  geom_point() +
+  geom_smooth(method = "lm", col = "red") +
+  labs(x = "Total Number of Cases", 
+       y = "Total Numer of Murders", 
+       title = "Linear Model Predicting murder rate against overall crime rate")
+```
+
+### Model Analysis
+I wanted to test to see if increasing crime rates meant and increasing murder rate. The reason for this is because I wanted to confirm that general crime increasing would also mean serious crime increased as perhaps they were completely independent. However, this analysis has shown to a statistically significant level (95% confidence level), that murder rates are correlated with crime in general.
+
+### Project Conclusion:
+As far as potential biases go, there is the chance of a conscious/unconscious bias in the way policing is done from a racial profiling (or any other demographical profiling) perspective. This could mean a higher number of recorded cases in certain demographics than others, based more on profiles rather than actual crime committed.
+
+I think this data could have biases if it was to be extrapolated into future and/or outside of this area. For example, extrapolating this data to nationwide crime statistics could be biased towards under/over predicting based on whether this area has a high or low crime rate compared to a national average. 
+
+As far as personal biases go, I feel as though I have a bias towards trusting police data. I have not had negative interactions with law enforcement, but I understand this is not the case universally. For this specific reason I have called out the fact above that the data could have a conscious or unconscious bias in the data due to such profiling. I would also keep this in mind in making any conculusions about demographics groups in any further analysis and make the bias clear. 
+
+Overall I think this data is very interesting, particularly when used within its specific geographical area and not extrapolated too far. I would be interested to incorporate further population statistics to the data in order to put context on the interesting demographic information and make more useful conclusions (e.g. what if crime numbers are growing because population is growing).
+
